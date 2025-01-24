@@ -1,6 +1,8 @@
 const { ipcRenderer, screen, shell } = require("electron")
 const remote = require("@electron/remote")
 const fs = require("fs")
+const { exec } = require('child_process');
+const path = require('path');
 const { Viewer } = require("./viewer/viewer.js")
 const { ModelBuilder } = require("./util/modelBuilder.js")
 const { KmpData } = require("./util/kmpData.js")
@@ -113,6 +115,8 @@ class MainWindow
 			kclTriIndex: [-1, -1],
 
 			activeModel: 0,
+			loadedFromSZS: false,
+			currentTrack: null,
 			loadedTracks: [],
 
 			enableRotationRender: true,
@@ -552,6 +556,17 @@ class MainWindow
 			this.currentKmpFilename = filename
 			this.currentNotSaved = false
 			this.savedUndoSlot = this.undoPointer
+
+			if (this.cfg.loadedFromSZS) {
+				exec(`wszst create "${this.cfg.currentTrack}" -o`, (error) => {
+					if (error) {
+						alert(`An error occurred.\n\n${error.message}`);
+						return;
+					}
+					alert("SZS file created successfully!");
+				});
+			}
+
 			this.refreshPanels()
 			return true
 		}
@@ -599,12 +614,13 @@ class MainWindow
 	openSZS(filename) {
     if (filename == null) return;
 
-    const { exec } = require('child_process');
-    const path = require('path');
-
     let baseName = path.basename(filename, path.extname(filename));
     let currentTrack = path.join(path.dirname(filename), `${baseName}.d`);
+		
+		this.cfg.currentTrack = currentTrack;
 		this.cfg.loadedTracks.push(currentTrack);
+		this.cfg.loadedFromSZS = true;
+
     let kmpPath = path.join(currentTrack, 'course.kmp');
 
     exec(`wszst x "${filename}" -o`, (error) => {
