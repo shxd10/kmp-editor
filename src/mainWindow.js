@@ -112,6 +112,9 @@ class MainWindow
 			kclHighlighter: 0,
 			kclTriIndex: [-1, -1],
 
+			activeModel: 0,
+			loadedTracks: [],
+
 			enableRotationRender: true,
 
 			startPointsEnableZoneRender: true,
@@ -205,6 +208,17 @@ class MainWindow
 			return
 		
 		ev.returnValue = false
+
+		for (let track of this.cfg.loadedTracks) {
+			if (fs.existsSync(track)) {
+				try {
+						fs.rm(track, { recursive: true });
+						console.log(`Deleted folder: ${track}`);
+				} catch (error) {
+						console.error(`Failed to delete folder: ${error.message}`);
+				}
+			}
+		}
 		
 		// Working around an Electron bug
 		window.setTimeout(() =>
@@ -240,8 +254,9 @@ class MainWindow
 		panel.addSpacer(null)
 		//panel.addButton(null, "Load course_model.brres", () => this.openCourseBrres())
 		//panel.addButton(null, "Load course.kcl", () => this.openCourseKcl())
+		panel.addButton(null, "Load SZS", () => this.askOpenSZS())
 		panel.addButton(null, "Load KMP", () => this.askOpenKmp())
-		panel.addButton(null, "Load Model", () => this.openCustomModel())
+		panel.addButton(null, "Load Models", () => this.openCustomModel())
 		panel.addButton(null, "(5) Toggle Projection", () => this.cfg.useOrthoProjection = !this.cfg.useOrthoProjection)
 		panel.addButton(null, "Center view", () => this.viewer.centerView())
 		panel.addSlider(null, "Shading", 0, 1, this.cfg.shadingFactor, 0.05, (x) => this.cfg.shadingFactor = x)
@@ -270,6 +285,15 @@ class MainWindow
 			{ str: "Sloped Walls", value: 6 },
 		]
 		panel.addSelectionDropdown(kclGroup, "Highlight", this.cfg.kclHighlighter, hlOptions, true, false, (x) => { this.cfg.kclHighlighter = x; this.refreshPanels() })
+		panel.addSelectionDropdown(kclGroup, "Active Model", this.cfg.activeModel, [{ str: "None", value: -1 }, { str: "KCL", value: 0 }, { str: "BRRES", value: 1 }], true, false, (x) => { this.cfg.activeModel = x; this.refreshPanels() })
+
+		if (this.cfg.activeModel === -1) {
+			this.setDefaultModel()
+		} else if (this.cfg.activeModel === 0) {
+			this.openCourseKcl()
+		} else if (this.cfg.activeModel === 1) {
+			this.openCourseBrres()
+		}
 	
 		const onBlur = (x) =>
 		{
@@ -561,7 +585,42 @@ class MainWindow
 		this.viewer.centerView()
 		this.currentKclFilename = null
 	}
-	
+
+	askOpenSZS()
+	{
+		if (!this.askSaveChanges())
+			return
+		
+		let result = remote.dialog.showOpenDialogSync(remote.getCurrentWindow(), { properties: ["openFile"], filters: [{ name: "SZS Files (*.szs)", extensions: ["szs"] }] })
+		if (result)
+			this.openSZS(result[0])
+	}
+
+	openSZS(filename) {
+    if (filename == null) return;
+
+    const { exec } = require('child_process');
+    const path = require('path');
+
+    let baseName = path.basename(filename, path.extname(filename));
+    let currentTrack = path.join(path.dirname(filename), `${baseName}.d`);
+		this.cfg.loadedTracks.push(currentTrack);
+    let kmpPath = path.join(currentTrack, 'course.kmp');
+
+    exec(`wszst x "${filename}" -o`, (error) => {
+        if (error) {
+            alert(`An error occurred.\n\n${error.message}`);
+            return;
+        }
+
+        if (fs.existsSync(kmpPath)) {
+            this.currentKmpFilename = kmpPath;
+            this.openKmp(kmpPath);
+        } else {
+            alert(`course.kmp is missing in: ${currentTrack}`);
+        }
+    });
+	}
 	
 	openCourseBrres()
 	{
