@@ -19,6 +19,9 @@ Currently edits the following sections:
 
 The tool will keep other sections intact when saving.
 
+> [!NOTE]
+> If you want to directly edit SZS files, please install [wszst](https://szs.wiimm.de/download.html).
+
 :warning: This is an early release, so use at your own risk! Remember to always backup your files
 beforehand.
 
@@ -32,5 +35,7 @@ Navigate to the repository's root folder, and do:
 npm install
 npm start
 ```
+
+For building, run `npm run dist`
 
 ![Screenshot](/doc/screenshot1.png)

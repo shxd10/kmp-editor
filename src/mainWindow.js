@@ -45,8 +45,8 @@ class MainWindow
 					}},
 					{ label: "Open...", accelerator: "CmdOrCtrl+O", click: () => this.askOpenKmp() },
 					{ type: "separator" },
-					{ label: "Save", accelerator: "CmdOrCtrl+S", click: () => this.saveKmp(this.currentKmpFilename) },
-					{ label: "Save as...", click: () => this.saveKmpAs() },
+					{ label: "Save", accelerator: "CmdOrCtrl+S", click: () => this.cfg.loadedFromSZS ? this.saveSZS(this.cfg.szsPath) : this.saveKmp(this.currentKmpFilename) },
+					{ label: "Save as...", click: () => this.cfg.loadedFromSZS ? this.saveSZSas() : this.saveKmpAs() },
 				]
 			},
 			{
@@ -113,11 +113,12 @@ class MainWindow
 			kclEnableEffects: false,
 			kclHighlighter: 0,
 			kclTriIndex: [-1, -1],
+			activeModel: 1,
 
-			activeModel: 0,
+			szsPath: null,
+			wiimmDir: path.join(process.cwd(), "Wiimm"),
 			loadedFromSZS: false,
 			currentTrack: null,
-			loadedTracks: [],
 
 			enableRotationRender: true,
 
@@ -213,14 +214,11 @@ class MainWindow
 		
 		ev.returnValue = false
 
-		for (let track of this.cfg.loadedTracks) {
-			if (fs.existsSync(track)) {
-				try {
-						fs.rm(track, { recursive: true });
-						console.log(`Deleted folder: ${track}`);
-				} catch (error) {
-						console.error(`Failed to delete folder: ${error.message}`);
-				}
+		if (fs.existsSync(this.cfg.wiimmDir)) {
+			try {
+				fs.rmSync(this.cfg.wiimmDir, { recursive: true });
+			} catch (error) {
+				alert(`Failed to delete folder: ${error.message}`);
 			}
 		}
 		
@@ -258,11 +256,11 @@ class MainWindow
 		panel.addSpacer(null)
 		//panel.addButton(null, "Load course_model.brres", () => this.openCourseBrres())
 		//panel.addButton(null, "Load course.kcl", () => this.openCourseKcl())
-		panel.addButton(null, "Load SZS", () => this.askOpenSZS())
-		panel.addButton(null, "Load KMP", () => this.askOpenKmp())
-		panel.addButton(null, "Load Models", () => this.openCustomModel())
-		panel.addButton(null, "(5) Toggle Projection", () => this.cfg.useOrthoProjection = !this.cfg.useOrthoProjection)
-		panel.addButton(null, "Center view", () => this.viewer.centerView())
+		panel.addButton(null, "Load KMP", () => this.askOpenKmp(), true)
+		panel.addButton(null, "Load SZS", () => this.askOpenSZS(), true)
+		panel.addButton(null, "Load Models", () => this.openCustomModel(), true)
+		panel.addButton(null, "(5) Toggle Projection", () => this.cfg.useOrthoProjection = !this.cfg.useOrthoProjection, true)
+		panel.addButton(null, "Center view", () => this.viewer.centerView(), true)
 		panel.addSlider(null, "Shading", 0, 1, this.cfg.shadingFactor, 0.05, (x) => this.cfg.shadingFactor = x)
 		panel.addSlider(null, "Fog", 0.0000001, 0.0002, this.cfg.fogFactor, 0.0000001, (x) => this.cfg.fogFactor = x)
 		panel.addSlider(null, "Point Scale", 0.1, 5, this.cfg.pointScale, 0.1, (x) => this.cfg.pointScale = x)
@@ -282,20 +280,21 @@ class MainWindow
 		[
 			{ str: "None", value: 0 },
 			{ str: "Trickable Road", value: 1 },
-			{ str: "Horizontal Walls", value: 2 },
-			{ str: "Barrel Roll Walls", value: 3 },
-			{ str: "Custom Flag", value: 4 },
-			{ str: "Triangle Index", value: 5 },
-			{ str: "Sloped Walls", value: 6 },
+			{ str: "Reject Road", value: 2 },
+			{ str: "Horizontal Walls", value: 3 },
+			{ str: "Barrel Roll Walls", value: 4 },
+			{ str: "Sloped Walls", value: 5 },
+			{ str: "Custom Flag", value: 6 },
+			{ str: "Triangle Index", value: 7 },
 		]
 		panel.addSelectionDropdown(kclGroup, "Highlight", this.cfg.kclHighlighter, hlOptions, true, false, (x) => { this.cfg.kclHighlighter = x; this.refreshPanels() })
-		panel.addSelectionDropdown(kclGroup, "Active Model", this.cfg.activeModel, [{ str: "None", value: -1 }, { str: "KCL", value: 0 }, { str: "BRRES", value: 1 }], true, false, (x) => { this.cfg.activeModel = x; this.refreshPanels() })
+		panel.addSelectionDropdown(kclGroup, "Active Model", this.cfg.activeModel, [{ str: "None", value: 0 }, { str: "KCL", value: 1 }, { str: "BRRES", value: 2 }], true, false, (x) => { this.cfg.activeModel = x; this.refreshPanels() })
 
-		if (this.cfg.activeModel === -1) {
+		if (this.cfg.activeModel === 0) {
 			this.setDefaultModel()
-		} else if (this.cfg.activeModel === 0) {
-			this.openCourseKcl()
 		} else if (this.cfg.activeModel === 1) {
+			this.openCourseKcl()
+		} else if (this.cfg.activeModel === 2) {
 			this.openCourseBrres()
 		}
 	
@@ -306,7 +305,7 @@ class MainWindow
 			return x
 		}
 		
-		if (this.cfg.kclHighlighter === 4)
+		if (this.cfg.kclHighlighter === 6)
 		{	
 			let flagOptions = [{ str: "None", value: -1 }]
 			for (let i = 0; i <= 0x1f; i++)
@@ -319,7 +318,7 @@ class MainWindow
 			panel.addSelectionNumericInput(kclGroup, "Wheel Depth", 	 -1, 0x3,  this.hl.intensity, 		1.0, 0.0, true, false, (x) => { this.hl.intensity = x	 	}, onBlur)
 			panel.addSelectionNumericInput(kclGroup, "Collision Effect", -1, 0x7,  this.hl.collisionEffect, 1.0, 0.0, true, false, (x) => { this.hl.collisionEffect = x }, onBlur)
 		}
-		else if (this.cfg.kclHighlighter === 5)
+		else if (this.cfg.kclHighlighter === 7)
 		{
 			panel.addSelectionNumericInput(kclGroup, "Tri Index Min", -1, 0xffff,  this.cfg.kclTriIndex[0], 1.0, 1.0, true, false, (x) => { this.cfg.kclTriIndex[0] = x }, onBlur)
 			panel.addSelectionNumericInput(kclGroup, "Tri Index Max", -1, 0xffff,  this.cfg.kclTriIndex[1], 1.0, 1.0, true, false, (x) => { this.cfg.kclTriIndex[1] = x }, onBlur)
@@ -472,6 +471,24 @@ class MainWindow
 		else
 			return false
 	}
+
+	askWiimmCheck()
+	{
+		let result = remote.dialog.showMessageBoxSync(remote.getCurrentWindow(),
+		{
+			type: "question",
+			title: "Check SZS",
+			message: "Do you want to perform a check to the SZS file?",
+			buttons: ["Yes", "No", "Cancel"],
+			defaultId: 0,
+			cancelId: 2
+		})
+		
+		if (result == 0)
+			return true
+		else
+			return false
+	}
 	
 	
 	newKmp()
@@ -555,18 +572,8 @@ class MainWindow
 			
 			this.currentKmpFilename = filename
 			this.currentNotSaved = false
+			this.cfg.loadedFromSZS = false
 			this.savedUndoSlot = this.undoPointer
-
-			if (this.cfg.loadedFromSZS) {
-				exec(`wszst create "${this.cfg.currentTrack}" -o`, (error) => {
-					if (error) {
-						alert(`An error occurred.\n\n${error.message}`);
-						return;
-					}
-					alert("SZS file created successfully!");
-				});
-			}
-
 			this.refreshPanels()
 			return true
 		}
@@ -584,6 +591,58 @@ class MainWindow
 		let result = remote.dialog.showSaveDialogSync(remote.getCurrentWindow(), { filters: [{ name: "KMP Files (*.kmp)", extensions: ["kmp"] }] })
 		if (result)
 			return this.saveKmp(result)
+		
+		return false
+	}
+
+	saveSZS(filename)
+	{
+		if (filename == null)
+			return this.saveSZSas()
+		
+		try
+		{
+			this.currentNotSaved = false
+			this.cfg.loadedFromSZS = true
+			this.savedUndoSlot = this.undoPointer
+
+			exec(`wszst c "${this.cfg.currentTrack}" -d "${this.cfg.szsPath}" -o`, (error) => {
+				if (error) {
+					alert(`An error occurred.\n\n${error.message}`);
+					return;
+				}
+				alert("SZS file saved successfully!");
+	
+				if (this.askWiimmCheck()) {
+					exec(`wszst check "${this.cfg.szsPath}"`, (error, stdout, stderr) => {
+						if (error) {
+							alert(`Command completed with issues:\n${stdout}`);
+							console.error("Command Error:", error);
+							console.error("STDERR:", stderr);
+							return;
+						}
+						alert(`Command executed successfully:\n${stdout}`);
+					});
+				}
+			});
+
+			this.refreshPanels()
+			return true
+		}
+		catch (e)
+		{
+			console.error(e)
+			alert("SZS save error!\n\n" + e)
+			return false
+		}
+
+	}
+
+	saveSZSas()
+	{
+		let result = remote.dialog.showSaveDialogSync(remote.getCurrentWindow(), { filters: [{ name: "SZS Files (*.szs)", extensions: ["szs"] }] })
+		if (result)
+			return this.saveSZS(result)
 		
 		return false
 	}
@@ -614,26 +673,31 @@ class MainWindow
 	openSZS(filename) {
     if (filename == null) return;
 
+		this.cfg.szsPath = filename;
+
     let baseName = path.basename(filename, path.extname(filename));
-    let currentTrack = path.join(path.dirname(filename), `${baseName}.d`);
-		
+    
+    if (!fs.existsSync(this.cfg.wiimmDir)) {
+      fs.mkdirSync(this.cfg.wiimmDir);
+    }
+
+    let currentTrack = path.join(this.cfg.wiimmDir, `${baseName}.d`);
 		this.cfg.currentTrack = currentTrack;
-		this.cfg.loadedTracks.push(currentTrack);
 		this.cfg.loadedFromSZS = true;
 
     let kmpPath = path.join(currentTrack, 'course.kmp');
 
-    exec(`wszst x "${filename}" -o`, (error) => {
+    exec(`wszst x "${filename}" -d "${currentTrack}" -o`, (error) => {
         if (error) {
-            alert(`An error occurred.\n\n${error.message}`);
-            return;
+					alert(`An error occurred.\n\n${error.message}`);
+					return;
         }
 
         if (fs.existsSync(kmpPath)) {
-            this.currentKmpFilename = kmpPath;
-            this.openKmp(kmpPath);
+					this.currentKmpFilename = kmpPath;
+					this.openKmp(kmpPath);
         } else {
-            alert(`course.kmp is missing in: ${currentTrack}`);
+          alert(`course.kmp is missing in: ${currentTrack}`);
         }
     });
 	}
@@ -730,6 +794,7 @@ class MainWindow
 			this.viewer.centerView()
 		
 		this.noModelLoaded = false
+		this.cfg.activeModel = 1
 	}
 }
 
@@ -893,20 +958,21 @@ class Panel
 	}
 	
 	
-	addButton(group, str, onclick = null)
+	addButton(group, str, onclick = null, inline = false)
 	{
 		let div = document.createElement("div")
-		div.className = "panelRowElement"
+
+		div.className = inline ? "panelRowElement inline" : "panelRowElement";
 		
 		let label = document.createElement("label")
-		div.appendChild(label)
 		
 		let button = document.createElement("button")
 		button.className = "panelButton"
 		button.innerHTML = str
-		button.onclick = () => { onclick(); this.onRefreshView() }
+		button.onclick = () => { if (onclick) onclick(); this.onRefreshView(); }
 		
 		label.appendChild(button)
+		div.appendChild(label)
 		
 		if (group == null)
 			this.contentDiv.appendChild(div)

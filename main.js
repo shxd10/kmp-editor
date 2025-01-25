@@ -33,6 +33,8 @@ function createWindow()
 		protocol: 'file:',
 		slashes: true
 	}))
+
+	latestWindow.maximize();
 }
 
 app.on('ready', createWindow)
